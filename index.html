@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Links</title>
+<style>
+  :root{
+    --bg: #0b0c0f;
+    --card: #16171c;
+    --card-hover: #1e2027;
+    --text: #eaeaee;
+    --sub: #8a8d98;
+    --border: #24262e;
+    --accent: #5b8cff;
+    --danger: #e5484d;
+  }
+
+  *{ box-sizing: border-box; }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 6vh 6vw 10vh;
+  }
+
+  .topbar{
+    width:100%;
+    max-width: 780px;
+    display:flex;
+    justify-content:flex-end;
+    margin-bottom: 24px;
+  }
+
+  button{
+    font-family:inherit;
+    font-size:.8rem;
+    font-weight:500;
+    color: var(--sub);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    cursor:pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  button:hover{ background: var(--card-hover); color: var(--text); }
+  button.primary{ color:#0b0c0f; background: var(--accent); border-color: var(--accent); }
+  button.primary:hover{ opacity:.9; background: var(--accent); }
+  button.danger{ color: var(--danger); }
+
+  .grid{
+    width:100%;
+    max-width: 780px;
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+  }
+
+  .card{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap: 10px;
+    text-decoration:none;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px 12px;
+    transition: transform .15s ease, background .15s ease, border-color .15s ease;
+  }
+
+  .card:hover{
+    background: var(--card-hover);
+    border-color: #34363f;
+    transform: translateY(-2px);
+  }
+
+  .icon{
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: #fff;
+    overflow:hidden;
+  }
+  .icon img{ width: 26px; height: 26px; }
+
+  .name{
+    font-size: .85rem;
+    font-weight:500;
+    color: var(--sub);
+    text-align:center;
+  }
+
+  .remove-btn{
+    position:absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    padding:0;
+    font-size: .8rem;
+    line-height:1;
+    display:none;
+    align-items:center;
+    justify-content:center;
+  }
+  body.editing .remove-btn{ display:flex; }
+  body.editing .card{ cursor: default; }
+
+  .add-card{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height: 96px;
+    border: 1px dashed var(--border);
+    border-radius: 16px;
+    color: var(--sub);
+    font-size: 1.6rem;
+    cursor:pointer;
+    display:none;
+    background:none;
+  }
+  body.editing .add-card{ display:flex; }
+
+  /* Modal */
+  .overlay{
+    position:fixed; inset:0;
+    background: rgba(0,0,0,.6);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index: 10;
+  }
+  .overlay.show{ display:flex; }
+
+  .modal{
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 320px;
+    display:flex;
+    flex-direction:column;
+    gap: 12px;
+  }
+
+  .modal h3{ margin:0 0 4px; font-size: 1rem; }
+
+  .modal input{
+    font-family:inherit;
+    font-size: .9rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+  }
+  .modal input:focus{ outline: 1px solid var(--accent); }
+
+  .modal-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .hint{ font-size:.75rem; color: var(--sub); margin: -4px 0 0; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button id="editToggle">Edit</button>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<!-- Password modal -->
+<div class="overlay" id="authOverlay">
+  <div class="modal">
+    <h3 id="authTitle">Enter admin password</h3>
+    <input type="password" id="authInput" placeholder="Password" autocomplete="off">
+    <p class="hint" id="authHint"></p>
+    <div class="modal-actions">
+      <button id="authCancel">Cancel</button>
+      <button class="primary" id="authSubmit">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / edit link modal -->
+<div class="overlay" id="linkOverlay">
+  <div class="modal">
+    <h3 id="linkModalTitle">Add link</h3>
+    <input type="text" id="linkName" placeholder="Name (e.g. Gmail)">
+    <input type="url" id="linkUrl" placeholder="https://example.com">
+    <div class="modal-actions">
+      <button id="linkCancel">Cancel</button>
+      <button class="primary" id="linkSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'launchpad.links.v1';
+  const PASS_KEY    = 'launchpad.password.v1';
+  const DEFAULT_PASSWORD = 'admin'; // change this the first time you unlock
+
+  const defaultLinks = [
+    { name: 'Gmail',      url: 'https://mail.google.com' },
+    { name: 'Classroom',  url: 'https://classroom.google.com' },
+    { name: 'Calendar',   url: 'https://calendar.google.com' },
+    { name: 'Drive',      url: 'https://drive.google.com' },
+    { name: 'Docs',       url: 'https://docs.google.com' },
+    { name: 'YouTube',    url: 'https://youtube.com' },
+  ];
+
+  function loadLinks(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return defaultLinks.slice();
+  }
+  function saveLinks(links){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(links));
+  }
+  function getPassword(){
+    return localStorage.getItem(PASS_KEY) || DEFAULT_PASSWORD;
+  }
+
+  let links = loadLinks();
+  let editing = false;
+  let editIndex = null; // index being edited, null = adding new
+
+  const grid = document.getElementById('grid');
+  const editToggle = document.getElementById('editToggle');
+
+  function faviconFor(url){
+    try{
+      const domain = new URL(url).hostname;
+      return `https://www.google.com/s2/favicons?sz=64&domain=${domain}`;
+    }catch(e){
+      return '';
+    }
+  }
+
+  function render(){
+    grid.innerHTML = '';
+    links.forEach((link, i) => {
+      const card = document.createElement(editing ? 'div' : 'a');
+      card.className = 'card';
+      if(!editing) card.href = link.url;
+      card.innerHTML = `
+        <div class="icon"><img src="${faviconFor(link.url)}" alt=""></div>
+        <div class="name">${link.name}</div>
+        ${editing ? '<button class="remove-btn" title="Remove">&times;</button>' : ''}
+      `;
+      if(editing){
+        card.addEventListener('click', (e) => {
+          if(e.target.classList.contains('remove-btn')){
+            links.splice(i, 1);
+            saveLinks(links);
+            render();
+          } else {
+            openLinkModal(i);
+          }
+        });
+      }
+      grid.appendChild(card);
+    });
+
+    if(editing){
+      const addCard = document.createElement('button');
+      addCard.className = 'add-card';
+      addCard.textContent = '+';
+      addCard.addEventListener('click', () => openLinkModal(null));
+      grid.appendChild(addCard);
+    }
+  }
+
+  // ---- Auth modal ----
+  const authOverlay = document.getElementById('authOverlay');
+  const authInput   = document.getElementById('authInput');
+  const authHint    = document.getElementById('authHint');
+  const authTitle   = document.getElementById('authTitle');
+
+  function openAuth(){
+    const hasCustomPassword = !!localStorage.getItem(PASS_KEY);
+    authTitle.textContent = 'Enter admin password';
+    authHint.textContent = hasCustomPassword
+      ? ''
+      : `First time here — default password is "${DEFAULT_PASSWORD}". You can set your own below after unlocking.`;
+    authInput.value = '';
+    authOverlay.classList.add('show');
+    authInput.focus();
+  }
+  document.getElementById('authCancel').addEventListener('click', () => authOverlay.classList.remove('show'));
+  document.getElementById('authSubmit').addEventListener('click', submitAuth);
+  authInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') submitAuth(); });
+
+  function submitAuth(){
+    if(authInput.value === getPassword()){
+      authOverlay.classList.remove('show');
+      enterEditMode();
+    }else{
+      authHint.textContent = 'Incorrect password. Try again.';
+      authHint.style.color = 'var(--danger)';
+    }
+  }
+
+  function enterEditMode(){
+    editing = true;
+    document.body.classList.add('editing');
+    editToggle.textContent = 'Done';
+    render();
+    maybeOfferPasswordChange();
+  }
+
+  function maybeOfferPasswordChange(){
+    if(localStorage.getItem(PASS_KEY)) return;
+    const newPass = prompt(`Set your own admin password (or leave blank to keep using "${DEFAULT_PASSWORD}"):`);
+    if(newPass) localStorage.setItem(PASS_KEY, newPass);
+  }
+
+  editToggle.addEventListener('click', () => {
+    if(editing){
+      editing = false;
+      document.body.classList.remove('editing');
+      editToggle.textContent = 'Edit';
+      render();
+    } else {
+      openAuth();
+    }
+  });
+
+  // ---- Add/edit link modal ----
+  const linkOverlay = document.getElementById('linkOverlay');
+  const linkName = document.getElementById('linkName');
+  const linkUrl  = document.getElementById('linkUrl');
+  const linkModalTitle = document.getElementById('linkModalTitle');
+
+  function openLinkModal(index){
+    editIndex = index;
+    if(index === null){
+      linkModalTitle.textContent = 'Add link';
+      linkName.value = '';
+      linkUrl.value = '';
+    }else{
+      linkModalTitle.textContent = 'Edit link';
+      linkName.value = links[index].name;
+      linkUrl.value = links[index].url;
+    }
+    linkOverlay.classList.add('show');
+    linkName.focus();
+  }
+  document.getElementById('linkCancel').addEventListener('click', () => linkOverlay.classList.remove('show'));
+  document.getElementById('linkSave').addEventListener('click', () => {
+    const name = linkName.value.trim();
+    let url = linkUrl.value.trim();
+    if(!name || !url) return;
+    if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+    if(editIndex === null){
+      links.push({ name, url });
+    }else{
+      links[editIndex] = { name, url };
+    }
+    saveLinks(links);
+    linkOverlay.classList.remove('show');
+    render();
+  });
+
+  render();
+</script>
+
+</body>
+</html>
