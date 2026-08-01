@@ -164,7 +164,11 @@
     links.forEach((link) => {
       const card = document.createElement(editing ? 'div' : 'a');
       card.className = 'card';
-      if(!editing) card.href = link.url;
+      if(!editing){
+        card.href = link.url;
+        card.target = '_blank';
+        card.rel = 'noopener noreferrer';
+      }
       card.innerHTML = `
         <div class="icon"><img src="${iconUrlFor(link)}" alt=""></div>
         <div class="name">${link.name}</div>
