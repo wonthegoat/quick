@@ -36,9 +36,12 @@
     position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap: 10px; text-decoration:none; color: var(--text); background: var(--card);
     border: 1px solid var(--border); border-radius: 16px; padding: 22px 12px;
-    transition: transform .15s ease, background .15s ease, border-color .15s ease;
+    transition: transform .15s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
   }
   .card:hover{ background: var(--card-hover); border-color: #34363f; transform: translateY(-2px); }
+  body.editing .card{ cursor: grab; }
+  .card.dragging{ opacity: .4; }
+  .card.drag-over{ border-color: var(--accent); }
   .icon{ width: 42px; height: 42px; border-radius: 12px; display:flex; align-items:center; justify-content:center; background: #fff; overflow:hidden; }
   .icon img{ width: 24px; height: 24px; }
   .name{ font-size: .85rem; font-weight:500; color: var(--sub); text-align:center; }
@@ -47,7 +50,6 @@
     padding:0; font-size: .8rem; line-height:1; display:none; align-items:center; justify-content:center;
   }
   body.editing .remove-btn{ display:flex; }
-  body.editing .card{ cursor: default; }
   .add-card{
     display:flex; align-items:center; justify-content:center; min-height: 96px;
     border: 1px dashed var(--border); border-radius: 16px; color: var(--sub);
@@ -106,12 +108,9 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzdm9rbGR1aXNzdXJxZGxhaG9vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNDIwMDEsImV4cCI6MjEwMDgxODAwMX0.hlNPyZYyPrZacoAIXFCfw3Mxp_gBc7A4oie81cv9454';
   // =========================================================================
 
-  const PASS_KEY = 'launchpad.password.v1';
-  const DEFAULT_PASSWORD = 'admin';
-
+  const DEFAULT_PASSWORD = 'makhachev';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // Known domain -> simple-icons slug, so common Google apps get their real logos.
   const knownIcons = {
     'mail.google.com': 'gmail',
     'classroom.google.com': 'googleclassroom',
@@ -123,10 +122,8 @@
   };
 
   function guessIcon(url){
-    try{
-      const host = new URL(url).hostname;
-      return knownIcons[host] || '';
-    }catch(e){ return ''; }
+    try{ const host = new URL(url).hostname; return knownIcons[host] || ''; }
+    catch(e){ return ''; }
   }
 
   function iconUrlFor(link){
@@ -141,6 +138,7 @@
   let links = [];
   let editing = false;
   let editId = null;
+  let adminConfig = { password: DEFAULT_PASSWORD, is_set: false };
 
   const grid = document.getElementById('grid');
   const editToggle = document.getElementById('editToggle');
@@ -149,14 +147,56 @@
   async function loadLinks(){
     statusEl.textContent = 'Loading…';
     const { data, error } = await sb.from('links').select('*').order('position', { ascending: true });
-    if(error){
-      statusEl.textContent = 'Could not connect to Supabase';
-      console.error(error);
-      return;
-    }
+    if(error){ statusEl.textContent = 'Could not connect to Supabase'; console.error(error); return; }
     links = data;
     statusEl.textContent = 'Synced';
     render();
+  }
+
+  async function loadAdminConfig(){
+    const { data, error } = await sb.from('admin_config').select('*').eq('id', 1).maybeSingle();
+    if(!error && data){
+      adminConfig = data;
+    }
+  }
+
+  // ---- Drag to reorder ----
+  let dragSrcId = null;
+
+  function attachDragHandlers(card, link){
+    card.draggable = true;
+    card.addEventListener('dragstart', (e) => {
+      dragSrcId = link.id;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if(link.id !== dragSrcId) card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      if(dragSrcId === null || dragSrcId === link.id) return;
+      const fromIndex = links.findIndex(l => l.id === dragSrcId);
+      const toIndex = links.findIndex(l => l.id === link.id);
+      const [moved] = links.splice(fromIndex, 1);
+      links.splice(toIndex, 0, moved);
+      dragSrcId = null;
+      render();
+      await persistPositions();
+    });
+  }
+
+  async function persistPositions(){
+    statusEl.textContent = 'Saving order…';
+    await Promise.all(links.map((l, i) => sb.from('links').update({ position: i }).eq('id', l.id)));
+    statusEl.textContent = 'Synced';
   }
 
   function render(){
@@ -175,6 +215,7 @@
         ${editing ? '<button class="remove-btn" title="Remove">&times;</button>' : ''}
       `;
       if(editing){
+        attachDragHandlers(card, link);
         card.addEventListener('click', async (e) => {
           if(e.target.classList.contains('remove-btn')){
             await sb.from('links').delete().eq('id', link.id);
@@ -203,12 +244,9 @@
   const authHint    = document.getElementById('authHint');
   const authTitle   = document.getElementById('authTitle');
 
-  function getPassword(){ return localStorage.getItem(PASS_KEY) || DEFAULT_PASSWORD; }
-
   function openAuth(){
-    const hasCustomPassword = !!localStorage.getItem(PASS_KEY);
     authTitle.textContent = 'Enter admin password';
-    authHint.textContent = hasCustomPassword ? '' : `First time here — default password is "${DEFAULT_PASSWORD}". You'll be asked to set your own after unlocking.`;
+    authHint.textContent = adminConfig.is_set ? '' : `This password hasn't been set yet — try the default, then you'll be asked to set a permanent one.`;
     authHint.style.color = 'var(--sub)';
     authInput.value = '';
     authOverlay.classList.add('show');
@@ -218,24 +256,30 @@
   document.getElementById('authSubmit').addEventListener('click', submitAuth);
   authInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') submitAuth(); });
 
-  function submitAuth(){
-    if(authInput.value === getPassword()){
+  async function submitAuth(){
+    if(authInput.value === adminConfig.password){
       authOverlay.classList.remove('show');
-      enterEditMode();
+      await enterEditMode();
     }else{
       authHint.textContent = 'Incorrect password. Try again.';
       authHint.style.color = 'var(--danger)';
     }
   }
 
-  function enterEditMode(){
+  async function enterEditMode(){
     editing = true;
     document.body.classList.add('editing');
     editToggle.textContent = 'Done';
     render();
-    if(!localStorage.getItem(PASS_KEY)){
-      const newPass = prompt(`Set your own admin password (or leave blank to keep using "${DEFAULT_PASSWORD}"):`);
-      if(newPass) localStorage.setItem(PASS_KEY, newPass);
+
+    // One-time-ever password set: only offered if no one has set it yet, anywhere.
+    if(!adminConfig.is_set){
+      let newPass = '';
+      while(!newPass){
+        newPass = prompt('Set the permanent admin password (required, one-time only — this cannot be changed again from this page):');
+      }
+      const { error } = await sb.from('admin_config').upsert({ id: 1, password: newPass, is_set: true });
+      if(!error){ adminConfig = { id: 1, password: newPass, is_set: true }; }
     }
   }
 
@@ -285,7 +329,10 @@
     render();
   });
 
-  loadLinks();
+  (async () => {
+    await loadAdminConfig();
+    await loadLinks();
+  })();
 </script>
 
 </body>
