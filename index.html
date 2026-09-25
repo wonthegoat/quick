@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -108,7 +108,6 @@
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzdm9rbGR1aXNzdXJxZGxhaG9vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNDIwMDEsImV4cCI6MjEwMDgxODAwMX0.hlNPyZYyPrZacoAIXFCfw3Mxp_gBc7A4oie81cv9454';
   // =========================================================================
 
-  const DEFAULT_PASSWORD = 'makhachev';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const knownIcons = {
@@ -138,7 +137,7 @@
   let links = [];
   let editing = false;
   let editId = null;
-  let adminConfig = { password: DEFAULT_PASSWORD, is_set: false };
+  let adminConfig = { is_set: false };
 
   const grid = document.getElementById('grid');
   const editToggle = document.getElementById('editToggle');
@@ -154,9 +153,9 @@
   }
 
   async function loadAdminConfig(){
-    const { data, error } = await sb.from('admin_config').select('*').eq('id', 1).maybeSingle();
+    const { data, error } = await sb.rpc('get_admin_status');
     if(!error && data){
-      adminConfig = data;
+      adminConfig = { is_set: !!data.is_set };
     }
   }
 
@@ -257,12 +256,31 @@
   authInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') submitAuth(); });
 
   async function submitAuth(){
-    if(authInput.value === adminConfig.password){
+    const password = authInput.value;
+    if(!password) return;
+
+    authHint.textContent = 'Checking…';
+    authHint.style.color = 'var(--sub)';
+
+    const { data, error } = await sb.rpc('verify_admin_password', {
+      input_password: password
+    });
+
+    if(error){
+      console.error(error);
+      authHint.textContent = 'Could not verify password. Try again.';
+      authHint.style.color = 'var(--danger)';
+      return;
+    }
+
+    if(data === true){
+      authInput.value = '';
       authOverlay.classList.remove('show');
       await enterEditMode();
     }else{
       authHint.textContent = 'Incorrect password. Try again.';
       authHint.style.color = 'var(--danger)';
+      authInput.select();
     }
   }
 
@@ -278,8 +296,21 @@
       while(!newPass){
         newPass = prompt('Set the permanent admin password (required, one-time only — this cannot be changed again from this page):');
       }
-      const { error } = await sb.from('admin_config').upsert({ id: 1, password: newPass, is_set: true });
-      if(!error){ adminConfig = { id: 1, password: newPass, is_set: true }; }
+      const { data, error } = await sb.rpc('set_admin_password', {
+        new_password: newPass
+      });
+
+      if(error || data !== true){
+        console.error(error);
+        alert('Could not save the new password. Your changes were not secured.');
+        editing = false;
+        document.body.classList.remove('editing');
+        editToggle.textContent = 'Edit';
+        render();
+        return;
+      }
+
+      adminConfig = { is_set: true };
     }
   }
 
